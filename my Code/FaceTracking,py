@@ -1,0 +1,96 @@
+import self as self
+from utlis import *
+import cv2
+import actionTracking as at
+
+frameSkip = True
+lastSpeedYaw = 0
+thisCommand = "track"
+landed = False
+
+width = 1280
+height = 720
+
+heightAdjust = height - 150
+killHeight = height - 270
+
+
+##         P  D I
+pidsYaw = [0.1,0.55,0]
+pidsPitch = [0.7,0.5,0]
+pidsThrottle = [0.2,0.4,0]
+killPids = [1,0.5,0]
+myDrone = initTello()
+
+prevErrorYaw = 0
+prevErrorPitch = 0
+prevErrorThrottle = 0
+myDrone.takeoff()
+time.sleep(8)
+myDrone.move_up(75)
+
+while True:
+    start_time = time.time()
+
+    ## get drone feed
+    img = getCameraFeed(myDrone,width, height)
+    #img = cv2.imread("00005.jpg")
+    #img = cv2.resize(img, (width, height))
+
+    cv2.circle(img, (width//2, height//2), 5, (0, 255, 0), -1)
+
+
+    # find the biggest face in img
+    img,faceInfo = findFace(img, width, height)
+
+    if not frameSkip:
+        # find the action in img
+        img, thisCommand = at.detectActions(img, thisCommand)
+        frameSkip = True
+    else:
+        frameSkip = False
+
+
+    print(thisCommand)
+    if thisCommand == "stationary":
+        prevErrorYaw = trackFaceYaw(myDrone, faceInfo, width, pidsYaw, prevErrorYaw,lastSpeedYaw)
+
+    elif thisCommand == "track":
+        prevErrorYaw, prevErrorPitch, prevErrorThrottle, lastSpeedYaw = trackFaceAll(myDrone, faceInfo, width, heightAdjust, pidsYaw,
+                                                                           pidsPitch, pidsThrottle, prevErrorYaw,
+                                                                           prevErrorPitch, prevErrorThrottle, lastSpeedYaw)
+    elif thisCommand == "flip":
+        myDrone.flip_right()
+        thisCommand = "stationary"
+    elif thisCommand == "land":
+        if not landed:
+            myDrone.land()
+            landed = True
+        thisCommand = "none"
+
+    elif thisCommand == "killMode":
+        prevErrorYaw, prevErrorPitch, prevErrorThrottle, lastSpeedYaw = trackFaceAll(myDrone, faceInfo, width, killHeight,
+                                                                                     pidsYaw,
+                                                                                     killPids, pidsThrottle,
+                                                                                     prevErrorYaw,
+                                                                                     prevErrorPitch, prevErrorThrottle,
+                                                                                     lastSpeedYaw, 0)
+
+
+    cv2.imshow('Image',img)
+
+    print("FPS: ", 1.0 / (time.time() - start_time))
+    ## PRESS Q IF SOMETHING GOES BAD!!!!
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        myDrone.land()
+        break
+
+
+
+
+
+
+
+
+
+
